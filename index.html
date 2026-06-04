@@ -4,10 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pickleball Score Tracker</title>
-  <!-- Firebase CDN (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-  <!-- React -->
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,484 +18,419 @@
     .neon-green { color: #39ff14; }
     .btn-primary { background: linear-gradient(135deg, #39ff14, #00d4aa); color: #000; font-weight: 700; }
     .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-    .score-input { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; text-align: center; font-size: 1.5rem; font-weight: 700; width: 80px; border-radius: 8px; padding: 8px; }
-    .score-input:focus { outline: none; border-color: #39ff14; box-shadow: 0 0 8px rgba(57,255,20,0.5); }
-    .tab-active { background: linear-gradient(135deg, #39ff14, #00d4aa); color: #000; }
-    .winner-glow { box-shadow: 0 0 30px rgba(57,255,20,0.6), 0 0 60px rgba(57,255,20,0.3); }
-    .game-card:hover { transform: translateY(-2px); transition: all 0.2s; }
-    .completed-game { border-left: 4px solid #39ff14; }
-    .pending-game { border-left: 4px solid rgba(255,255,255,0.2); }
-    .scroll-hidden::-webkit-scrollbar { display: none; }
-    .pulse-dot { animation: pulse 2s infinite; }
+    .btn-red { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; font-weight: 700; }
+    .btn-red:hover { opacity:0.85; }
+    .btn-yellow { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #000; font-weight: 700; }
+    .score-input { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3); color:white; text-align:center; font-size:1.5rem; font-weight:700; border-radius:8px; padding:8px; }
+    .score-input:focus { outline:none; border-color:#39ff14; box-shadow:0 0 8px rgba(57,255,20,0.5); }
+    .tab-active { background:linear-gradient(135deg,#39ff14,#00d4aa); color:#000; }
+    .winner-glow { box-shadow:0 0 30px rgba(57,255,20,0.6),0 0 60px rgba(57,255,20,0.3); }
+    .completed-game { border-left:4px solid #39ff14; }
+    .pending-game { border-left:4px solid rgba(255,255,255,0.2); }
+    .scroll-hidden::-webkit-scrollbar { display:none; }
+    .input-base { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:12px; padding:10px 16px; color:white; width:100%; }
+    .input-base::placeholder { color:rgba(255,255,255,0.3); }
+    .input-base:focus { outline:none; border-color:#39ff14; }
+    .pulse-dot { animation:pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .slide-up { animation:slideUp 0.25s ease; }
   </style>
 </head>
 <body class="gradient-bg min-h-screen text-white">
 <div id="root"></div>
-
 <script>
-  // ── Firebase Config ──────────────────────────────────────────────
   const firebaseConfig = {
-    apiKey: "AIzaSyCVw8pz6S9jRFOs3mb8rX1Ds7O05wnjxvg",
-    authDomain: "pickleball-score-3d85c.firebaseapp.com",
-    databaseURL: "https://pickleball-score-3d85c-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "pickleball-score-3d85c",
-    storageBucket: "pickleball-score-3d85c.firebasestorage.app",
-    messagingSenderId: "1011477564518",
-    appId: "1:1011477564518:web:fdf4c79a37d9fa95ad71a7",
-    measurementId: "G-3RV4F4TTYM"
+    apiKey:"AIzaSyCVw8pz6S9jRFOs3mb8rX1Ds7O05wnjxvg",
+    authDomain:"pickleball-score-3d85c.firebaseapp.com",
+    databaseURL:"https://pickleball-score-3d85c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:"pickleball-score-3d85c",
+    storageBucket:"pickleball-score-3d85c.firebasestorage.app",
+    messagingSenderId:"1011477564518",
+    appId:"1:1011477564518:web:fdf4c79a37d9fa95ad71a7",
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 </script>
-
 <script type="text/babel">
-const { useState, useEffect, useCallback, useMemo, useRef } = React;
+const { useState, useEffect, useMemo, useCallback } = React;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function genId(len = 6) {
-  return Math.random().toString(36).substring(2, 2 + len).toUpperCase();
-}
-function parseTime(str) {
-  const [h, m] = str.split(':').map(Number);
-  return h * 60 + m;
-}
-function formatTime(minutes) {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = minutes % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-}
-function shuffleArray(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
+// ── Constants ────────────────────────────────────────────────────────────────
+const ADMIN_USER = 'admin';
+const ADMIN_PASS = 'admin1234';
+const PRESET_PLAYERS = ['แชมป์','หนวด','ชิง','เอก','ซัน','ซ่า'];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const genId = (n=6) => Math.random().toString(36).substring(2,2+n).toUpperCase();
+const parseTime = s => { const [h,m]=s.split(':').map(Number); return h*60+m; };
+const formatTime = m => `${String(Math.floor(m/60)%24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+const thaiDate = (ts=Date.now()) => new Date(ts).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+const thaiDateTime = (ts) => new Date(ts).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+const defaultTournamentName = () => `การแข่งขัน ${thaiDate()}`;
+
+function shuffle(arr) {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
   return a;
 }
-function generateRoundRobin(players) {
-  const list = [...players];
-  if (list.length % 2 !== 0) list.push({ id: 'BYE', name: 'BYE' });
-  const total = list.length;
-  const rounds = [];
-  for (let r = 0; r < total - 1; r++) {
-    const round = [];
-    for (let i = 0; i < total / 2; i++) {
-      const home = list[i], away = list[total - 1 - i];
-      if (home.id !== 'BYE' && away.id !== 'BYE') round.push({ home, away });
-    }
-    rounds.push(round);
-    list.splice(1, 0, list.pop());
+// Singles: round-robin จนครบทุกคู่ แล้ววนซ้ำจนเต็มเวลา (เล่นเท่ากัน)
+function buildSinglesSchedule(players, maxGames) {
+  const list=[...players];
+  if(list.length%2!==0) list.push({id:'BYE',name:'BYE'});
+  const n=list.length;
+  const baseRounds=[];
+  for(let r=0;r<n-1;r++){
+    const round=[];
+    for(let i=0;i<n/2;i++){const h=list[i],a=list[n-1-i];if(h.id!=='BYE'&&a.id!=='BYE')round.push({home:h,away:a});}
+    baseRounds.push(round);
+    list.splice(1,0,list.pop());
   }
-  return rounds;
-}
-function generateDoubles(players) {
-  const allPairs = [];
-  for (let i = 0; i < players.length; i++)
-    for (let j = i + 1; j < players.length; j++)
-      allPairs.push([players[i], players[j]]);
-  const shuffled = shuffleArray(allPairs);
-  const matches = [], used = new Set();
-  for (let i = 0; i < shuffled.length; i++) {
-    if (used.has(i)) continue;
-    for (let j = i + 1; j < shuffled.length; j++) {
-      if (used.has(j)) continue;
-      const ids1 = new Set(shuffled[i].map(p => p.id));
-      if (!shuffled[j].some(p => ids1.has(p.id))) {
-        matches.push({ home: shuffled[i], away: shuffled[j] });
-        used.add(i); used.add(j); break;
+  const allGames=[];
+  let pass=0;
+  while(allGames.length<maxGames){
+    const rounds=pass%2===0?baseRounds:[...baseRounds].reverse();
+    for(const round of rounds){
+      for(const m of round){
+        if(allGames.length>=maxGames) break;
+        allGames.push({home:m.home,away:m.away});
       }
+      if(allGames.length>=maxGames) break;
     }
+    pass++;
+    if(pass>100) break; // safety
   }
-  return matches;
+  return allGames;
 }
 
-// ─── Firebase hooks ───────────────────────────────────────────────────────────
+// Doubles: สร้างทุก match ที่เป็นไปได้ แล้วเลือกให้ทุกคนเล่นเท่ากันจนเต็มเวลา
+function buildDoublesSchedule(players, maxGames) {
+  const n=players.length;
+  if(n<4) return [];
+
+  // สร้าง match ทั้งหมดที่เป็นไปได้ (เลือก 4 คน แล้วแบ่ง 3 วิธี)
+  const allMatches=[];
+  for(let a=0;a<n;a++) for(let b=a+1;b<n;b++) for(let c=b+1;c<n;c++) for(let d=c+1;d<n;d++){
+    const four=[players[a],players[b],players[c],players[d]];
+    allMatches.push({home:[four[0],four[1]],away:[four[2],four[3]]});
+    allMatches.push({home:[four[0],four[2]],away:[four[1],four[3]]});
+    allMatches.push({home:[four[0],four[3]],away:[four[1],four[2]]});
+  }
+
+  // Greedy: เลือก match ที่ทำให้ play count สม่ำเสมอที่สุด
+  const playCounts={};
+  players.forEach(p=>playCounts[p.id]=0);
+  const selected=[];
+  const pool=shuffle(allMatches);
+
+  while(selected.length<maxGames){
+    // หา match ที่ทำให้ผลรวม play count น้อยที่สุด (คนที่เล่นน้อยได้เล่นก่อน)
+    let bestIdx=-1, bestScore=Infinity;
+    for(let i=0;i<pool.length;i++){
+      const m=pool[i];
+      const involved=[...m.home,...m.away];
+      const score=involved.reduce((s,p)=>s+playCounts[p.id],0);
+      // คนที่เล่นน้อยต้องได้ก่อน
+      const maxInvolved=Math.max(...involved.map(p=>playCounts[p.id]));
+      const minAll=Math.min(...Object.values(playCounts));
+      if(maxInvolved<=minAll+2 && score<bestScore){bestScore=score;bestIdx=i;}
+    }
+    if(bestIdx===-1){
+      // ไม่มีตัวเลือกที่ fair แล้ว — เลือก match แรกสุดในกอง
+      if(pool.length===0) break;
+      bestIdx=0;
+    }
+    const [picked]=pool.splice(bestIdx,1);
+    selected.push(picked);
+    [...picked.home,...picked.away].forEach(p=>playCounts[p.id]++);
+    // วน pool ถ้าหมด
+    if(pool.length===0) pool.push(...shuffle(allMatches));
+  }
+  return selected;
+}
+
+// ── Admin session (sessionStorage) ──────────────────────────────────────────
+const isAdminLoggedIn = () => sessionStorage.getItem('pb_admin')==='1';
+const setAdminLogin = (v) => v ? sessionStorage.setItem('pb_admin','1') : sessionStorage.removeItem('pb_admin');
+
+// ── Firebase hooks ───────────────────────────────────────────────────────────
 function useSession(sessionId) {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!sessionId) { setLoading(false); return; }
-    const ref = db.ref(`sessions/${sessionId}`);
-    ref.on('value', snap => {
-      setSession(snap.val());
-      setLoading(false);
+  const [session,setSession]=useState(null);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    if(!sessionId){setLoading(false);return;}
+    const ref=db.ref(`sessions/${sessionId}`);
+    ref.on('value',snap=>{setSession(snap.val());setLoading(false);});
+    return ()=>ref.off();
+  },[sessionId]);
+  return {session,loading};
+}
+function useAllSessions() {
+  const [sessions,setSessions]=useState([]);
+  useEffect(()=>{
+    const ref=db.ref('sessions').orderByChild('createdAt').limitToLast(50);
+    ref.on('value',snap=>{
+      const data=snap.val()||{};
+      setSessions(Object.entries(data).map(([id,s])=>({id,...s})).reverse());
     });
-    return () => ref.off();
-  }, [sessionId]);
-
-  return { session, loading };
+    return ()=>ref.off();
+  },[]);
+  return sessions;
+}
+function useMasterPlayers() {
+  const [players,setPlayers]=useState({});
+  useEffect(()=>{
+    const ref=db.ref('masterPlayers');
+    ref.on('value',snap=>setPlayers(snap.val()||{}));
+    return ()=>ref.off();
+  },[]);
+  return players;
 }
 
-// ─── Components ───────────────────────────────────────────────────────────────
-function PlayerChip({ name, onRemove }) {
-  const colors = ['from-purple-500 to-pink-500','from-blue-500 to-cyan-500','from-green-500 to-teal-500','from-orange-500 to-red-500','from-yellow-500 to-orange-500','from-indigo-500 to-purple-500'];
-  const color = colors[name.charCodeAt(0) % colors.length];
-  return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-full bg-gradient-to-r ${color} text-white font-semibold text-sm`}>
-      <span>{name}</span>
-      {onRemove && <button onClick={onRemove} className="w-4 h-4 rounded-full bg-white/30 hover:bg-white/50 text-xs flex items-center justify-center font-bold">×</button>}
-    </div>
+// ── Shared components ────────────────────────────────────────────────────────
+const CHIP_COLORS=['from-purple-500 to-pink-500','from-blue-500 to-cyan-500','from-green-500 to-teal-500','from-orange-500 to-red-500','from-yellow-500 to-orange-500','from-indigo-500 to-purple-500'];
+function chipColor(name){ return CHIP_COLORS[([...name].reduce((a,c)=>a+c.charCodeAt(0),0))%CHIP_COLORS.length]; }
+
+function PlayerChip({name,onRemove,onClick,selected,dim}){
+  const c=chipColor(name);
+  return(
+    <button onClick={onClick||undefined}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r ${c} text-white font-semibold text-sm transition-all
+        ${onClick?'cursor-pointer hover:scale-105':'cursor-default'}
+        ${dim?'opacity-30':''} ${selected?'ring-2 ring-white ring-offset-1 ring-offset-transparent':''}`}>
+      {name}
+      {onRemove&&<span onClick={e=>{e.stopPropagation();onRemove();}} className="w-4 h-4 rounded-full bg-white/30 hover:bg-white/60 text-xs font-black flex items-center justify-center">×</span>}
+    </button>
   );
 }
 
-function ShareBanner({ sessionId }) {
-  const url = `${location.origin}${location.pathname}#${sessionId}`;
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  };
-  return (
+function ShareBanner({sessionId,isAdmin,sessionName}){
+  const url=`${location.origin}${location.pathname}#${sessionId}`;
+  const [copied,setCopied]=useState(false);
+  const copy=()=>{navigator.clipboard.writeText(url).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});};
+  return(
     <div className="card rounded-2xl p-4 border border-green-400/30 space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-green-400 pulse-dot inline-block"></span>
-        <span className="text-sm font-bold text-green-400">Live Session: #{sessionId}</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-400 pulse-dot inline-block"/>
+          <span className="text-sm font-bold text-green-400 truncate">{sessionName||`Live #${sessionId}`}</span>
+        </div>
+        {isAdmin&&<span className="text-xs bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">👑 Admin</span>}
       </div>
-      <p className="text-xs text-white/50">แชร์ลิงค์นี้ให้เพื่อนดูคะแนน real-time</p>
       <div className="flex gap-2">
-        <input readOnly value={url} className="flex-1 bg-white/10 rounded-lg px-3 py-1.5 text-xs text-white/70 truncate border border-white/10" />
-        <button onClick={copy} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${copied ? 'bg-green-400 text-black' : 'btn-primary'}`}>
-          {copied ? '✓ คัดลอก' : 'คัดลอก'}
+        <input readOnly value={url} className="flex-1 bg-white/10 rounded-lg px-3 py-1.5 text-xs text-white/50 border border-white/10 truncate"/>
+        <button onClick={copy} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${copied?'bg-green-400 text-black':'btn-primary'}`}>
+          {copied?'✓ คัดลอก':'แชร์'}
         </button>
       </div>
     </div>
   );
 }
 
-function SetupPage({ onStart, onJoin }) {
-  const [players, setPlayers] = useState([]);
-  const [newName, setNewName] = useState('');
-  const [gameType, setGameType] = useState('singles');
-  const [pointsPerGame, setPointsPerGame] = useState(11);
-  const [avgMinutes, setAvgMinutes] = useState(20);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('12:00');
-  const [joinId, setJoinId] = useState('');
-  const [joining, setJoining] = useState(false);
-
-  const addPlayer = () => {
-    const name = newName.trim();
-    if (!name || players.find(p => p.name === name)) return;
-    setPlayers(prev => [...prev, { id: `p-${Date.now()}`, name }]);
-    setNewName('');
+// ── Admin Login Modal ────────────────────────────────────────────────────────
+function AdminLoginModal({onSuccess,onClose}){
+  const [u,setU]=useState('');const [p,setP]=useState('');const [err,setErr]=useState(false);
+  const submit=()=>{
+    if(u===ADMIN_USER&&p===ADMIN_PASS){setAdminLogin(true);onSuccess();}
+    else{setErr(true);setTimeout(()=>setErr(false),1500);}
   };
-
-  const minPlayers = gameType === 'singles' ? 2 : 4;
-  const canStart = players.length >= minPlayers;
-  const totalMinutes = parseTime(endTime) - parseTime(startTime);
-  const estimatedGames = gameType === 'singles'
-    ? (players.length * (players.length - 1)) / 2
-    : Math.floor(players.length / 2) * Math.max(1, Math.floor(players.length / 2) - 1);
-
-  const handleJoin = async () => {
-    const id = joinId.trim().toUpperCase();
-    if (!id) return;
-    setJoining(true);
-    const snap = await db.ref(`sessions/${id}`).get();
-    if (snap.exists()) { onJoin(id); }
-    else { alert('ไม่พบ Session ID นี้'); setJoining(false); }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto p-4 space-y-5">
-      <div className="text-center py-5">
-        <div className="text-5xl mb-2">🏓</div>
-        <h1 className="text-3xl font-black neon-green tracking-wide">PICKLEBALL</h1>
-        <p className="text-white/60 text-sm mt-1">Score Tracker & Live Tournament</p>
-      </div>
-
-      {/* Join existing session */}
-      <div className="card rounded-2xl p-5 space-y-3 border border-blue-400/20">
-        <h2 className="font-bold text-lg flex items-center gap-2">🔗 เข้าร่วม Session ที่มีอยู่</h2>
-        <div className="flex gap-2">
-          <input value={joinId} onChange={e => setJoinId(e.target.value.toUpperCase())} maxLength={6}
-            placeholder="Session ID (เช่น AB12CD)"
-            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/40 focus:outline-none focus:border-blue-400 uppercase tracking-widest font-mono" />
-          <button onClick={handleJoin} disabled={joining || !joinId.trim()}
-            className="px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-400 font-bold transition-all disabled:opacity-40">
-            {joining ? '...' : 'เข้าร่วม'}
-          </button>
+  return(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="card rounded-2xl p-6 w-full max-w-xs space-y-4 slide-up">
+        <div className="text-center"><div className="text-3xl mb-1">🔐</div><h3 className="font-bold text-xl">Admin Login</h3></div>
+        <div className="space-y-3">
+          <input value={u} onChange={e=>setU(e.target.value)} placeholder="Username" className={`input-base ${err?'border-red-400':''}`} autoFocus/>
+          <input type="password" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="Password" className={`input-base ${err?'border-red-400':''}`}/>
         </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-white/10" />
-        <span className="text-white/40 text-sm">หรือสร้างใหม่</span>
-        <div className="flex-1 h-px bg-white/10" />
-      </div>
-
-      {/* Game Type */}
-      <div className="card rounded-2xl p-5 space-y-3">
-        <h2 className="font-bold text-lg">🎯 ประเภทการแข่งขัน</h2>
+        {err&&<p className="text-red-400 text-xs text-center">Username หรือ Password ไม่ถูกต้อง</p>}
         <div className="grid grid-cols-2 gap-3">
-          {[['singles','1v1 (เดี่ยว)','👤'],['doubles','2v2 (คู่)','👥']].map(([val, label, icon]) => (
-            <button key={val} onClick={() => setGameType(val)}
-              className={`p-3 rounded-xl border-2 font-semibold transition-all ${gameType === val ? 'border-green-400 bg-green-400/20 text-green-300' : 'border-white/20'}`}>
-              <div className="text-2xl">{icon}</div>
-              <div className="text-sm mt-1">{label}</div>
-            </button>
-          ))}
+          <button onClick={onClose} className="py-2.5 rounded-xl border border-white/20 hover:bg-white/10">ยกเลิก</button>
+          <button onClick={submit} className="btn-primary py-2.5 rounded-xl">เข้าสู่ระบบ</button>
         </div>
       </div>
-
-      {/* Players */}
-      <div className="card rounded-2xl p-5 space-y-4">
-        <h2 className="font-bold text-lg flex items-center gap-2">👥 ผู้เล่น
-          <span className="ml-auto text-sm font-normal text-white/50">{players.length} คน</span>
-        </h2>
-        <div className="flex gap-2">
-          <input value={newName} onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addPlayer()}
-            placeholder="ชื่อผู้เล่น..." maxLength={20}
-            className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white placeholder-white/40 focus:outline-none focus:border-green-400" />
-          <button onClick={addPlayer} className="btn-primary px-4 py-2.5 rounded-xl">+ เพิ่ม</button>
-        </div>
-        {players.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {players.map(p => <PlayerChip key={p.id} name={p.name} onRemove={() => setPlayers(prev => prev.filter(x => x.id !== p.id))} />)}
-          </div>
-        )}
-      </div>
-
-      {/* Settings */}
-      <div className="card rounded-2xl p-5 space-y-4">
-        <h2 className="font-bold text-lg">⚙️ ตั้งค่าเกม</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm text-white/60">คะแนนต่อเกม</label>
-            <div className="grid grid-cols-5 gap-1">
-              {[5, 7, 11, 15, 21].map(pt => (
-                <button key={pt} onClick={() => setPointsPerGame(pt)}
-                  className={`py-2 rounded-lg text-sm font-bold border transition-all ${pointsPerGame === pt ? 'border-green-400 bg-green-400/20 text-green-300' : 'border-white/20'}`}>
-                  {pt}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm text-white/60">เวลาเฉลี่ย/เกม (นาที)</label>
-            <input type="number" value={avgMinutes} min={5} max={60}
-              onChange={e => setAvgMinutes(Number(e.target.value))}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-400" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm text-white/60">เริ่มเล่น</label>
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-400" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm text-white/60">สิ้นสุด</label>
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-400" />
-          </div>
-        </div>
-        {canStart && (
-          <div className="rounded-xl p-3 text-sm bg-green-400/10 border border-green-400/20 space-y-1">
-            <div className="flex justify-between"><span className="text-white/60">จำนวนเกม</span><span className="font-bold">{estimatedGames} เกม</span></div>
-            <div className="flex justify-between"><span className="text-white/60">เวลาประมาณ</span><span className="font-bold">{estimatedGames * avgMinutes} / {totalMinutes} นาที</span></div>
-          </div>
-        )}
-      </div>
-
-      <button disabled={!canStart} onClick={() => onStart({ players, gameType, pointsPerGame, avgMinutes, startTime, endTime })}
-        className={`w-full py-4 rounded-2xl text-lg font-black transition-all ${canStart ? 'btn-primary shadow-lg' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
-        {canStart ? '🚀 สร้าง Session & เริ่มแข่ง' : `ต้องการผู้เล่น ≥${minPlayers} คน`}
-      </button>
     </div>
   );
 }
 
-function ScoreModal({ game, pointsPerGame, onSave, onClose, gameType }) {
-  const [homeScore, setHomeScore] = useState(game.homeScore ?? '');
-  const [awayScore, setAwayScore] = useState(game.awayScore ?? '');
-  const getLabel = t => gameType === 'doubles' ? t.map(p => p.name).join(' & ') : t.name;
-  const valid = homeScore !== '' && awayScore !== '' &&
-    Number(homeScore) >= 0 && Number(awayScore) >= 0 &&
-    (Number(homeScore) === pointsPerGame || Number(awayScore) === pointsPerGame);
-
-  return (
+// ── Score Modal ──────────────────────────────────────────────────────────────
+function ScoreModal({game,pointsPerGame,gameType,onSave,onClear,onClose}){
+  const [hs,setHs]=useState(game.homeScore??'');
+  const [as_,setAs]=useState(game.awayScore??'');
+  const lbl=t=>gameType==='doubles'?t.map(p=>p.name).join(' & '):t.name;
+  const valid=hs!==''&&as_!==''&&Number(hs)>=0&&Number(as_)>=0&&(Number(hs)===pointsPerGame||Number(as_)===pointsPerGame);
+  return(
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="card rounded-2xl p-6 w-full max-w-sm space-y-5">
+      <div className="card rounded-2xl p-6 w-full max-w-sm space-y-5 slide-up">
         <div className="text-center">
-          <div className="text-2xl mb-1">📝</div>
-          <h3 className="font-bold text-lg">บันทึกคะแนน</h3>
+          <div className="text-2xl">📝</div>
+          <h3 className="font-bold text-lg mt-1">บันทึกคะแนน</h3>
           <p className="text-white/50 text-xs">เกมที่ {game.gameNum}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex-1 text-center">
-            <p className="text-xs text-white/60 mb-2 truncate">{getLabel(game.home)}</p>
-            <input type="number" min={0} max={pointsPerGame + 5} value={homeScore}
-              onChange={e => setHomeScore(e.target.value)}
-              className="score-input w-full" placeholder="0" autoFocus />
+            <p className="text-xs text-white/60 mb-2 truncate">{lbl(game.home)}</p>
+            <input type="number" min={0} value={hs} onChange={e=>setHs(e.target.value)} className="score-input w-full" placeholder="0" autoFocus/>
           </div>
-          <div className="text-2xl font-black text-white/40">VS</div>
+          <div className="text-2xl font-black text-white/30">VS</div>
           <div className="flex-1 text-center">
-            <p className="text-xs text-white/60 mb-2 truncate">{getLabel(game.away)}</p>
-            <input type="number" min={0} max={pointsPerGame + 5} value={awayScore}
-              onChange={e => setAwayScore(e.target.value)}
-              className="score-input w-full" placeholder="0" />
+            <p className="text-xs text-white/60 mb-2 truncate">{lbl(game.away)}</p>
+            <input type="number" min={0} value={as_} onChange={e=>setAs(e.target.value)} className="score-input w-full" placeholder="0"/>
           </div>
         </div>
-        {!valid && homeScore !== '' && awayScore !== '' && (
-          <p className="text-red-400 text-xs text-center">ผู้ชนะต้องได้ {pointsPerGame} คะแนน</p>
-        )}
+        {!valid&&hs!==''&&as_!==''&&<p className="text-red-400 text-xs text-center">ผู้ชนะต้องได้ {pointsPerGame} คะแนน</p>}
         <div className="grid grid-cols-2 gap-3">
           <button onClick={onClose} className="py-2.5 rounded-xl border border-white/20 hover:bg-white/10">ยกเลิก</button>
-          <button disabled={!valid} onClick={() => onSave(Number(homeScore), Number(awayScore))}
-            className={`py-2.5 rounded-xl font-bold ${valid ? 'btn-primary' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
-            บันทึก ✓
+          <button disabled={!valid} onClick={()=>onSave(Number(hs),Number(as_))} className={`py-2.5 rounded-xl font-bold ${valid?'btn-primary':'bg-white/10 text-white/30 cursor-not-allowed'}`}>บันทึก ✓</button>
+        </div>
+        {onClear&&game.homeScore!==undefined&&(
+          <button onClick={onClear} className="w-full py-2 rounded-xl text-xs text-red-400 border border-red-400/30 hover:bg-red-400/10">
+            🗑 ลบคะแนนเกมนี้ออก
           </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Confirm Modal ────────────────────────────────────────────────────────────
+function ConfirmModal({title,desc,onConfirm,onClose,danger=true}){
+  return(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="card rounded-2xl p-6 w-full max-w-xs space-y-4 slide-up text-center">
+        <div className="text-3xl">{danger?'⚠️':'❓'}</div>
+        <h3 className="font-bold text-lg">{title}</h3>
+        {desc&&<p className="text-white/50 text-sm">{desc}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onClose} className="py-2.5 rounded-xl border border-white/20 hover:bg-white/10">ยกเลิก</button>
+          <button onClick={onConfirm} className={`py-2.5 rounded-xl font-bold ${danger?'btn-red':'btn-primary'}`}>ยืนยัน</button>
         </div>
       </div>
     </div>
   );
 }
 
-function GamesPage({ session, sessionId, readOnly }) {
-  const [modalGame, setModalGame] = useState(null);
-  const { config, schedule, scores = {} } = session;
-  const { gameType, pointsPerGame, avgMinutes, startTime } = config;
-  const getLabel = t => gameType === 'doubles' ? t.map(p => p.name).join(' & ') : t.name;
-  const completedCount = schedule.filter(g => scores[g.id]).length;
+// ── Games Tab ────────────────────────────────────────────────────────────────
+function GamesTab({session,sessionId,isAdmin}){
+  const [modal,setModal]=useState(null);
+  const {config,schedule=[],scores={},name:sessionName}=session;
+  const {gameType,pointsPerGame,avgMinutes,startTime}=config;
+  const lbl=t=>gameType==='doubles'?t.map(p=>p.name).join(' & '):t.name;
+  const done=schedule.filter(g=>scores[g.id]).length;
 
-  const saveScore = async (gameId, home, away) => {
-    await db.ref(`sessions/${sessionId}/scores/${gameId}`).set({ home, away });
-  };
+  const saveScore=(gameId,h,a)=>db.ref(`sessions/${sessionId}/scores/${gameId}`).set({home:h,away:a});
+  const clearScore=(gameId)=>db.ref(`sessions/${sessionId}/scores/${gameId}`).remove();
 
-  return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
-      <ShareBanner sessionId={sessionId} />
-
-      {readOnly && (
-        <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-3 text-sm text-blue-300 text-center">
-          👁 โหมดดู — คะแนนอัปเดต real-time อัตโนมัติ
-        </div>
-      )}
-
+  return(
+    <div className="space-y-4">
+      <ShareBanner sessionId={sessionId} isAdmin={isAdmin} sessionName={sessionName}/>
       <div className="flex items-center gap-3">
-        <div>
-          <h2 className="font-bold text-xl">🏓 ตารางแข่งขัน</h2>
-          <p className="text-white/50 text-xs">{completedCount}/{schedule.length} เกมเสร็จสิ้น</p>
-        </div>
-        <div className="ml-auto text-right">
-          <div className="text-2xl font-black neon-green">{Math.round(completedCount / schedule.length * 100) || 0}%</div>
-        </div>
+        <div><h2 className="font-bold text-xl">🏓 ตารางแข่งขัน</h2><p className="text-white/50 text-xs">{done}/{schedule.length} เกมเสร็จสิ้น</p></div>
+        <div className="ml-auto text-2xl font-black neon-green">{Math.round(done/schedule.length*100)||0}%</div>
       </div>
-
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-500 rounded-full"
-          style={{ width: `${(completedCount / schedule.length) * 100}%` }} />
+        <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-500 rounded-full" style={{width:`${done/schedule.length*100}%`}}/>
       </div>
-
       <div className="space-y-3">
-        {schedule.map((game, idx) => {
-          const sc = scores[game.id];
-          const done = !!sc;
-          const winner = done ? (sc.home > sc.away ? 'home' : sc.away > sc.home ? 'away' : 'draw') : null;
-          return (
-            <div key={game.id}
-              className={`card rounded-2xl p-4 game-card ${!readOnly ? 'cursor-pointer' : ''} ${done ? 'completed-game' : 'pending-game'}`}
-              onClick={() => !readOnly && setModalGame({ ...game, homeScore: sc?.home, awayScore: sc?.away })}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-white/40 font-mono">เกมที่ {game.gameNum}</span>
-                <span className="text-xs text-white/40 font-mono">{formatTime(parseTime(startTime) + idx * avgMinutes)}</span>
-                {done ? <span className="text-xs bg-green-400/20 text-green-400 px-2 py-0.5 rounded-full">✓ เสร็จ</span>
-                  : <span className="text-xs bg-white/10 text-white/50 px-2 py-0.5 rounded-full">⏳ รอ</span>}
+        {schedule.map((game,idx)=>{
+          const sc=scores[game.id];const isDone=!!sc;
+          const winner=isDone?(sc.home>sc.away?'home':sc.away>sc.home?'away':'draw'):null;
+          return(
+            <div key={game.id} onClick={()=>isAdmin&&setModal({...game,homeScore:sc?.home,awayScore:sc?.away})}
+              className={`card rounded-2xl p-4 transition-all ${isAdmin?'cursor-pointer hover:-translate-y-0.5':''} ${isDone?'completed-game':'pending-game'}`}>
+              <div className="flex items-center justify-between mb-2 text-xs text-white/40">
+                <span className="font-mono">เกมที่ {game.gameNum}</span>
+                <span className="font-mono">{formatTime(parseTime(startTime)+idx*avgMinutes)}</span>
+                {isDone?<span className="bg-green-400/20 text-green-400 px-2 py-0.5 rounded-full">✓ เสร็จ</span>
+                  :<span className="bg-white/10 text-white/50 px-2 py-0.5 rounded-full">⏳ รอ</span>}
               </div>
               <div className="flex items-center gap-3">
-                <div className={`flex-1 text-center ${done && winner === 'home' ? 'text-green-400 font-black' : ''}`}>
-                  <p className="text-sm font-semibold truncate">{getLabel(game.home)}</p>
-                  {done && <p className="text-2xl font-black">{sc.home}</p>}
+                <div className={`flex-1 text-center ${isDone&&winner==='home'?'text-green-400 font-black':''}`}>
+                  <p className="text-sm font-semibold truncate">{lbl(game.home)}</p>
+                  {isDone&&<p className="text-2xl font-black">{sc.home}</p>}
                 </div>
                 <div className="text-lg font-black text-white/30">VS</div>
-                <div className={`flex-1 text-center ${done && winner === 'away' ? 'text-green-400 font-black' : ''}`}>
-                  <p className="text-sm font-semibold truncate">{getLabel(game.away)}</p>
-                  {done && <p className="text-2xl font-black">{sc.away}</p>}
+                <div className={`flex-1 text-center ${isDone&&winner==='away'?'text-green-400 font-black':''}`}>
+                  <p className="text-sm font-semibold truncate">{lbl(game.away)}</p>
+                  {isDone&&<p className="text-2xl font-black">{sc.away}</p>}
                 </div>
               </div>
-              {!done && !readOnly && <p className="text-center text-white/30 text-xs mt-2">แตะเพื่อบันทึกคะแนน</p>}
+              {!isDone&&(isAdmin?<p className="text-center text-white/30 text-xs mt-2">แตะเพื่อบันทึกคะแนน</p>:<p className="text-center text-white/30 text-xs mt-2">รอผู้จัดบันทึก</p>)}
             </div>
           );
         })}
       </div>
-
-      {modalGame && (
-        <ScoreModal game={modalGame} pointsPerGame={pointsPerGame} gameType={gameType}
-          onClose={() => setModalGame(null)}
-          onSave={(h, a) => { saveScore(modalGame.id, h, a); setModalGame(null); }} />
-      )}
+      {modal&&<ScoreModal game={modal} pointsPerGame={pointsPerGame} gameType={gameType}
+        onClose={()=>setModal(null)}
+        onSave={(h,a)=>{saveScore(modal.id,h,a);setModal(null);}}
+        onClear={()=>{clearScore(modal.id);setModal(null);}}/>}
     </div>
   );
 }
 
-function ResultsPage({ session, sessionId, onReset, readOnly }) {
-  const { config, schedule, scores = {}, players } = session;
-  const { gameType } = config;
+// ── Results Tab ──────────────────────────────────────────────────────────────
+function ResultsTab({session,sessionId,isAdmin,onReset}){
+  const {config,schedule=[],scores={},players=[],name:sessionName}=session;
+  const {gameType}=config;
+  const lbl=t=>gameType==='doubles'?t.map(p=>p.name).join(' & '):t.name;
+  const [confirmDelete,setConfirmDelete]=useState(false);
 
-  const standings = useMemo(() => {
-    const map = {};
-    players.forEach(p => { map[p.id] = { ...p, w: 0, l: 0, pf: 0, pa: 0, games: 0 }; });
-    schedule.forEach(game => {
-      const sc = scores[game.id];
-      if (!sc) return;
-      const homeIds = gameType === 'doubles' ? game.home.map(p => p.id) : [game.home.id];
-      const awayIds = gameType === 'doubles' ? game.away.map(p => p.id) : [game.away.id];
-      homeIds.forEach(id => { if (!map[id]) return; map[id].pf += sc.home; map[id].pa += sc.away; map[id].games++; sc.home > sc.away ? map[id].w++ : map[id].l++; });
-      awayIds.forEach(id => { if (!map[id]) return; map[id].pf += sc.away; map[id].pa += sc.home; map[id].games++; sc.away > sc.home ? map[id].w++ : map[id].l++; });
+  const standings=useMemo(()=>{
+    const map={};
+    players.forEach(p=>{map[p.id]={...p,w:0,l:0,pf:0,pa:0,games:0};});
+    schedule.forEach(game=>{
+      const sc=scores[game.id];if(!sc)return;
+      const hIds=gameType==='doubles'?game.home.map(p=>p.id):[game.home.id];
+      const aIds=gameType==='doubles'?game.away.map(p=>p.id):[game.away.id];
+      hIds.forEach(id=>{if(!map[id])return;map[id].pf+=sc.home;map[id].pa+=sc.away;map[id].games++;sc.home>sc.away?map[id].w++:map[id].l++;});
+      aIds.forEach(id=>{if(!map[id])return;map[id].pf+=sc.away;map[id].pa+=sc.home;map[id].games++;sc.away>sc.home?map[id].w++:map[id].l++;});
     });
-    return Object.values(map).sort((a, b) => b.w !== a.w ? b.w - a.w : (b.pf - b.pa) - (a.pf - a.pa));
-  }, [schedule, scores, players, gameType]);
+    return Object.values(map).sort((a,b)=>b.w!==a.w?b.w-a.w:(b.pf-b.pa)-(a.pf-a.pa));
+  },[schedule,scores,players,gameType]);
 
-  const winner = standings[0];
-  const completedGames = schedule.filter(g => scores[g.id]).length;
+  const top=standings[0];
+  const doneCount=schedule.filter(g=>scores[g.id]).length;
 
-  return (
-    <div className="max-w-2xl mx-auto p-4 space-y-5">
-      <ShareBanner sessionId={sessionId} />
+  const handleDeleteSession=async()=>{
+    await db.ref(`sessions/${sessionId}`).remove();
+    onReset();
+  };
 
-      {completedGames > 0 && winner?.games > 0 && (
+  return(
+    <div className="space-y-5">
+      <ShareBanner sessionId={sessionId} isAdmin={isAdmin} sessionName={sessionName}/>
+      {doneCount>0&&top?.games>0&&(
         <div className="card rounded-2xl p-6 text-center winner-glow border border-green-400/40">
           <div className="text-5xl mb-2">👑</div>
-          <p className="text-white/60 text-sm">ผู้นำ</p>
-          <h3 className="text-3xl font-black neon-green mt-1">{winner.name}</h3>
+          <p className="text-white/60 text-sm">ผู้ชนะ</p>
+          <h3 className="text-3xl font-black neon-green mt-1">{top.name}</h3>
           <div className="flex justify-center gap-6 mt-3 text-sm">
-            <div><span className="text-white/50">ชนะ </span><span className="font-bold text-green-400">{winner.w}</span></div>
-            <div><span className="text-white/50">แพ้ </span><span className="font-bold text-red-400">{winner.l}</span></div>
-            <div><span className="text-white/50">+/- </span><span className={`font-bold ${winner.pf - winner.pa >= 0 ? 'text-green-400' : 'text-red-400'}`}>{winner.pf - winner.pa > 0 ? '+' : ''}{winner.pf - winner.pa}</span></div>
+            <div><span className="text-white/50">ชนะ </span><span className="font-bold text-green-400">{top.w}</span></div>
+            <div><span className="text-white/50">แพ้ </span><span className="font-bold text-red-400">{top.l}</span></div>
+            <div><span className="text-white/50">+/- </span><span className={`font-bold ${top.pf-top.pa>=0?'text-green-400':'text-red-400'}`}>{top.pf-top.pa>0?'+':''}{top.pf-top.pa}</span></div>
           </div>
         </div>
       )}
-
       <div className="card rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-white/10"><h3 className="font-bold">📊 ตารางคะแนน</h3></div>
+        <div className="p-4 border-b border-white/10 font-bold">📊 ตารางคะแนน</div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="text-white/40 text-xs border-b border-white/10">
-                <th className="p-3 text-left">#</th>
-                <th className="p-3 text-left">ชื่อ</th>
-                <th className="p-3 text-center">W</th>
-                <th className="p-3 text-center">L</th>
-                <th className="p-3 text-center">ได้</th>
-                <th className="p-3 text-center">เสีย</th>
-                <th className="p-3 text-center">+/-</th>
-              </tr>
-            </thead>
+            <thead><tr className="text-white/40 text-xs border-b border-white/10">
+              <th className="p-3 text-left">#</th><th className="p-3 text-left">ชื่อ</th>
+              <th className="p-3 text-center">W</th><th className="p-3 text-center">L</th>
+              <th className="p-3 text-center">ได้</th><th className="p-3 text-center">เสีย</th>
+              <th className="p-3 text-center">+/-</th>
+            </tr></thead>
             <tbody>
-              {standings.map((p, idx) => {
-                const diff = p.pf - p.pa;
-                return (
-                  <tr key={p.id} className={`border-b border-white/5 ${idx === 0 && p.games > 0 ? 'bg-green-400/5' : ''}`}>
-                    <td className="p-3 font-bold">{['🥇','🥈','🥉'][idx] || `${idx+1}.`}</td>
+              {standings.map((p,i)=>{
+                const diff=p.pf-p.pa;
+                return(
+                  <tr key={p.id} className={`border-b border-white/5 ${i===0&&p.games>0?'bg-green-400/5':''}`}>
+                    <td className="p-3 font-bold">{['🥇','🥈','🥉'][i]||`${i+1}.`}</td>
                     <td className="p-3 font-semibold">{p.name}</td>
                     <td className="p-3 text-center text-green-400 font-bold">{p.w}</td>
                     <td className="p-3 text-center text-red-400 font-bold">{p.l}</td>
                     <td className="p-3 text-center">{p.pf}</td>
                     <td className="p-3 text-center">{p.pa}</td>
-                    <td className={`p-3 text-center font-bold ${diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-white/50'}`}>{diff > 0 ? '+' : ''}{diff}</td>
+                    <td className={`p-3 text-center font-bold ${diff>0?'text-green-400':diff<0?'text-red-400':'text-white/50'}`}>{diff>0?'+':''}{diff}</td>
                   </tr>
                 );
               })}
@@ -505,116 +438,593 @@ function ResultsPage({ session, sessionId, onReset, readOnly }) {
           </table>
         </div>
       </div>
-
       <div className="card rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-white/10"><h3 className="font-bold">🎮 ผลเกมทั้งหมด</h3></div>
-        <div className="divide-y divide-white/5 max-h-80 overflow-y-auto scroll-hidden">
-          {schedule.map(game => {
-            const sc = scores[game.id];
-            const getLabel = t => gameType === 'doubles' ? t.map(p => p.name).join(' & ') : t.name;
-            if (!sc) return (
-              <div key={game.id} className="p-3 flex justify-between text-white/30 text-sm">
-                <span className="truncate flex-1">{getLabel(game.home)}</span>
-                <span className="font-mono px-2">- : -</span>
-                <span className="truncate flex-1 text-right">{getLabel(game.away)}</span>
-              </div>
-            );
-            return (
-              <div key={game.id} className="p-3 flex items-center gap-2 text-sm">
-                <span className={`flex-1 text-right truncate ${sc.home > sc.away ? 'font-bold text-green-400' : 'text-white/70'}`}>{getLabel(game.home)}</span>
-                <span className="font-mono font-black text-white px-2">{sc.home} : {sc.away}</span>
-                <span className={`flex-1 truncate ${sc.away > sc.home ? 'font-bold text-green-400' : 'text-white/70'}`}>{getLabel(game.away)}</span>
-              </div>
-            );
+        <div className="p-4 border-b border-white/10 font-bold">🎮 ผลเกมทั้งหมด</div>
+        <div className="divide-y divide-white/5 max-h-72 overflow-y-auto scroll-hidden">
+          {schedule.map(game=>{
+            const sc=scores[game.id];
+            if(!sc) return<div key={game.id} className="p-3 flex justify-between text-white/30 text-sm"><span className="truncate flex-1">{lbl(game.home)}</span><span className="px-2 font-mono">-:-</span><span className="truncate flex-1 text-right">{lbl(game.away)}</span></div>;
+            return<div key={game.id} className="p-3 flex items-center gap-1 text-sm">
+              <span className={`flex-1 text-right truncate ${sc.home>sc.away?'font-bold text-green-400':'text-white/70'}`}>{lbl(game.home)}</span>
+              <span className="font-mono font-black text-white px-2">{sc.home}:{sc.away}</span>
+              <span className={`flex-1 truncate ${sc.away>sc.home?'font-bold text-green-400':'text-white/70'}`}>{lbl(game.away)}</span>
+            </div>;
           })}
         </div>
       </div>
-
-      {!readOnly && (
-        <button onClick={onReset} className="w-full py-3 rounded-2xl border border-white/20 hover:bg-white/10 transition-all font-semibold">
-          🔄 เริ่มการแข่งขันใหม่
-        </button>
+      {isAdmin&&(
+        <div className="space-y-3">
+          <button onClick={onReset} className="w-full py-3 rounded-2xl border border-white/20 hover:bg-white/10 font-semibold">🔄 เริ่มการแข่งขันใหม่</button>
+          <button onClick={()=>setConfirmDelete(true)} className="w-full py-3 rounded-2xl btn-red font-semibold">🗑 ลบการแข่งขันนี้ออกจากระบบ</button>
+        </div>
       )}
+      {confirmDelete&&<ConfirmModal title="ลบการแข่งขัน?" desc={`"${sessionName||sessionId}" จะถูกลบถาวรและไม่สามารถกู้คืนได้`} onConfirm={handleDeleteSession} onClose={()=>setConfirmDelete(false)}/>}
     </div>
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
-function App() {
-  const [sessionId, setSessionId] = useState(() => location.hash.replace('#','') || null);
-  const [tab, setTab] = useState('games');
-  const { session, loading } = useSession(sessionId);
-  const readOnly = !!location.hash.replace('#','') && sessionId !== null;
+// ── Stats Tab ────────────────────────────────────────────────────────────────
+function StatsTab({allSessions}){
+  const [selected,setSelected]=useState(null); // player name
 
-  // Sync URL hash
-  useEffect(() => {
-    if (sessionId) location.hash = sessionId;
-    else location.hash = '';
-  }, [sessionId]);
+  // Build per-player, per-session stats
+  const {playerStats, playerDays} = useMemo(()=>{
+    const pStats={}; // name -> { total w/l/pf/pa/games, days:[] }
+    const pDays={};  // name -> [ {sessionId, name, date, w, l, pf, pa, games, gameResults:[]} ]
 
-  const handleStart = async (cfg) => {
-    const id = genId();
-    let games = [];
-    if (cfg.gameType === 'singles') {
-      const rounds = generateRoundRobin(cfg.players);
-      let num = 1;
-      rounds.forEach(round => round.forEach(match => games.push({ id: `g-${num}`, gameNum: num++, home: match.home, away: match.away })));
-    } else {
-      generateDoubles(cfg.players).forEach((m, i) => games.push({ id: `g-${i+1}`, gameNum: i+1, home: m.home, away: m.away }));
-    }
-    games = shuffleArray(games).map((g, i) => ({ ...g, gameNum: i + 1 }));
+    allSessions.forEach(s=>{
+      const {id,name:sName,schedule=[],scores={},config={},players=[],createdAt}=s;
+      const gt=config.gameType;
 
-    await db.ref(`sessions/${id}`).set({
-      config: cfg,
-      players: cfg.players,
-      schedule: games,
-      scores: {},
-      createdAt: Date.now(),
+      // init players seen in this session
+      const seenNames=new Set(players.map(p=>p.name));
+      seenNames.forEach(name=>{
+        if(!pStats[name]) pStats[name]={name,w:0,l:0,pf:0,pa:0,games:0,sessions:0};
+        if(!pDays[name]) pDays[name]=[];
+        pStats[name].sessions++;
+        pDays[name].push({sessionId:id,sessionName:sName||`#${id}`,date:createdAt,w:0,l:0,pf:0,pa:0,games:0,gameResults:[]});
+      });
+
+      schedule.forEach(game=>{
+        const sc=scores[game.id]; if(!sc) return;
+        const hNames=gt==='doubles'?game.home.map(p=>p.name):[game.home.name];
+        const aNames=gt==='doubles'?game.away.map(p=>p.name):[game.away.name];
+        const opponentLabel=(names)=>names.join(' & ');
+
+        hNames.forEach(name=>{
+          if(!pStats[name]) return;
+          const win=sc.home>sc.away; const loss=sc.home<sc.away;
+          pStats[name].pf+=sc.home; pStats[name].pa+=sc.away; pStats[name].games++;
+          win?pStats[name].w++:loss?pStats[name].l++:null;
+          const day=pDays[name]?.find(d=>d.sessionId===id);
+          if(day){
+            day.pf+=sc.home; day.pa+=sc.away; day.games++;
+            win?day.w++:loss?day.l++:null;
+            day.gameResults.push({
+              myTeam: hNames.join(' & '), opponent: opponentLabel(aNames),
+              myScore:sc.home, oppScore:sc.away, win, loss
+            });
+          }
+        });
+        aNames.forEach(name=>{
+          if(!pStats[name]) return;
+          const win=sc.away>sc.home; const loss=sc.away<sc.home;
+          pStats[name].pf+=sc.away; pStats[name].pa+=sc.home; pStats[name].games++;
+          win?pStats[name].w++:loss?pStats[name].l++:null;
+          const day=pDays[name]?.find(d=>d.sessionId===id);
+          if(day){
+            day.pf+=sc.away; day.pa+=sc.home; day.games++;
+            win?day.w++:loss?day.l++:null;
+            day.gameResults.push({
+              myTeam: aNames.join(' & '), opponent: opponentLabel(hNames),
+              myScore:sc.away, oppScore:sc.home, win, loss
+            });
+          }
+        });
+      });
     });
-    setSessionId(id);
-  };
 
-  const handleJoin = (id) => setSessionId(id);
-  const handleReset = () => { setSessionId(null); location.hash = ''; };
+    // sort each player's days newest first
+    Object.values(pDays).forEach(days=>days.sort((a,b)=>b.date-a.date));
+    const sorted=Object.values(pStats).filter(p=>p.games>0).sort((a,b)=>b.w!==a.w?b.w-a.w:(b.pf-b.pa)-(a.pf-a.pa));
+    return {playerStats:sorted, playerDays:pDays};
+  },[allSessions]);
 
-  if (loading && sessionId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="text-4xl">🏓</div>
-          <p className="text-white/60">กำลังโหลด session...</p>
+  if(!playerStats.length) return(
+    <div className="text-center py-16 space-y-3"><div className="text-5xl">📊</div><p className="text-white/40">ยังไม่มีสถิติ</p></div>
+  );
+
+  // Detail view for selected player
+  if(selected){
+    const p=playerStats.find(x=>x.name===selected);
+    const days=playerDays[selected]||[];
+    const wr=p.games>0?Math.round(p.w/p.games*100):0;
+    const diff=p.pf-p.pa;
+    const c=chipColor(p.name);
+    return(
+      <div className="space-y-4 slide-up">
+        <button onClick={()=>setSelected(null)} className="flex items-center gap-2 text-white/50 hover:text-white text-sm transition-all">← กลับ</button>
+
+        {/* Header card */}
+        <div className="card rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${c} flex items-center justify-center font-black text-2xl shrink-0`}>{p.name[0]}</div>
+            <div>
+              <p className="font-black text-2xl">{p.name}</p>
+              <p className="text-white/50 text-sm">{p.sessions} session · {p.games} เกมทั้งหมด</p>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="font-black text-3xl neon-green">{wr}%</p>
+              <p className="text-white/40 text-xs">Win Rate</p>
+            </div>
+          </div>
+          <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 rounded-full transition-all" style={{width:`${wr}%`}}/>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {[['ชนะ',p.w,'text-green-400'],['แพ้',p.l,'text-red-400'],['ได้',p.pf,'text-white'],['เสีย',p.pa,'text-white/60']].map(([l,v,cls])=>(
+              <div key={l} className="bg-white/5 rounded-xl p-2"><p className={`font-black text-xl ${cls}`}>{v}</p><p className="text-white/40 text-xs">{l}</p></div>
+            ))}
+          </div>
+          <div className="flex justify-between text-sm border-t border-white/10 pt-3">
+            <span className="text-white/50">ผลต่างลูกรวม</span>
+            <span className={`font-bold text-lg ${diff>0?'text-green-400':diff<0?'text-red-400':'text-white/50'}`}>{diff>0?'+':''}{diff}</span>
+          </div>
         </div>
+
+        {/* Day-by-day */}
+        <h3 className="font-bold text-lg">📅 ประวัติรายวัน</h3>
+        {days.filter(d=>d.games>0).map((day,di)=>{
+          const dwr=day.games>0?Math.round(day.w/day.games*100):0;
+          const ddiff=day.pf-day.pa;
+          return(
+            <div key={day.sessionId} className="card rounded-2xl overflow-hidden">
+              {/* Day header */}
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="font-bold truncate">{day.sessionName}</p>
+                  <p className="text-white/40 text-xs mt-0.5">{day.date?thaiDateTime(day.date):''}</p>
+                </div>
+                <div className="text-right shrink-0 ml-3">
+                  <p className={`font-black text-xl ${dwr>=50?'text-green-400':'text-red-400'}`}>{dwr}%</p>
+                  <p className="text-white/40 text-xs">{day.w}W {day.l}L</p>
+                </div>
+              </div>
+              {/* Day summary bar */}
+              <div className="px-4 py-2 flex gap-4 text-xs border-b border-white/5 bg-white/3">
+                <span className="text-white/50">{day.games} เกม</span>
+                <span className="text-green-400">+{day.pf} ลูก</span>
+                <span className="text-red-400">-{day.pa} ลูก</span>
+                <span className={`font-bold ml-auto ${ddiff>0?'text-green-400':ddiff<0?'text-red-400':'text-white/40'}`}>{ddiff>0?'+':''}{ddiff}</span>
+              </div>
+              {/* Individual game results */}
+              <div className="divide-y divide-white/5">
+                {day.gameResults.map((gr,gi)=>(
+                  <div key={gi} className="px-4 py-3 flex items-center gap-3">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${gr.win?'bg-green-400/20 text-green-400':gr.loss?'bg-red-400/20 text-red-400':'bg-white/10 text-white/50'}`}>
+                      {gr.win?'W':gr.loss?'L':'D'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white/40 truncate">คู่ของฉัน: <span className="text-white/70">{gr.myTeam}</span></p>
+                      <p className="text-xs text-white/40 truncate">คู่ต่อสู้: <span className="text-white/70">{gr.opponent}</span></p>
+                    </div>
+                    <div className={`text-right shrink-0 font-black text-lg ${gr.win?'text-green-400':gr.loss?'text-red-400':'text-white/50'}`}>
+                      {gr.myScore}<span className="text-white/30 font-normal text-sm mx-1">:</span>{gr.oppScore}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {days.filter(d=>d.games>0).length===0&&<p className="text-center text-white/30 py-8">ยังไม่มีเกมที่บันทึกคะแนน</p>}
       </div>
     );
   }
 
-  if (!sessionId || !session) {
-    return <SetupPage onStart={handleStart} onJoin={handleJoin} />;
-  }
-
-  return (
-    <div className="min-h-screen">
-      <div className="sticky top-0 z-40 gradient-bg border-b border-white/10">
-        <div className="max-w-2xl mx-auto flex">
-          {[['games','🏓 เกม'],['results','🏆 ผล']].map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)}
-              className={`flex-1 py-3 text-sm font-bold transition-all ${tab === key ? 'tab-active' : 'text-white/50 hover:text-white'}`}>
-              {label}
-            </button>
-          ))}
-          {!readOnly && (
-            <button onClick={handleReset} className="px-4 py-3 text-white/40 hover:text-white text-xs">ออก</button>
-          )}
-        </div>
-      </div>
-
-      {tab === 'games' && <GamesPage session={session} sessionId={sessionId} readOnly={false} />}
-      {tab === 'results' && <ResultsPage session={session} sessionId={sessionId} onReset={handleReset} readOnly={false} />}
+  // Overview list
+  return(
+    <div className="space-y-4">
+      <h2 className="font-bold text-xl">📊 สถิติผู้เล่น <span className="text-sm font-normal text-white/40">(แตะเพื่อดูรายละเอียด)</span></h2>
+      {playerStats.map((p,idx)=>{
+        const wr=p.games>0?Math.round(p.w/p.games*100):0;
+        const diff=p.pf-p.pa;
+        const c=chipColor(p.name);
+        const days=(playerDays[p.name]||[]).filter(d=>d.games>0);
+        return(
+          <div key={p.name} onClick={()=>setSelected(p.name)} className="card rounded-2xl p-4 space-y-3 cursor-pointer hover:-translate-y-0.5 transition-all">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${c} flex items-center justify-center font-black text-lg shrink-0`}>{p.name[0]}</div>
+              <div>
+                <p className="font-bold text-lg">{p.name}</p>
+                <p className="text-white/50 text-xs">{days.length} วันที่เล่น · {p.games} เกมรวม</p>
+              </div>
+              <div className="ml-auto text-right">
+                <p className="font-black text-2xl neon-green">{wr}%</p>
+                <p className="text-white/40 text-xs">Win Rate</p>
+              </div>
+            </div>
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 rounded-full" style={{width:`${wr}%`}}/>
+            </div>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              {[['ชนะ',p.w,'text-green-400'],['แพ้',p.l,'text-red-400'],['ได้',p.pf,'text-white'],['เสีย',p.pa,'text-white/60']].map(([l,v,cls])=>(
+                <div key={l} className="bg-white/5 rounded-xl p-2"><p className={`font-black text-lg ${cls}`}>{v}</p><p className="text-white/40 text-xs">{l}</p></div>
+              ))}
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">ผลต่างลูกรวม</span>
+              <span className={`font-bold ${diff>0?'text-green-400':diff<0?'text-red-400':'text-white/50'}`}>{diff>0?'+':''}{diff}</span>
+            </div>
+            {/* Mini day history preview */}
+            {days.length>0&&(
+              <div className="border-t border-white/10 pt-2 flex gap-1.5 flex-wrap">
+                {days.slice(0,5).map((d,i)=>{
+                  const dwr=d.games>0?Math.round(d.w/d.games*100):0;
+                  return(
+                    <div key={i} className={`text-xs px-2 py-1 rounded-lg font-bold ${dwr>=50?'bg-green-400/15 text-green-400':'bg-red-400/15 text-red-400'}`}>
+                      {d.date?new Date(d.date).toLocaleDateString('th-TH',{day:'numeric',month:'short'}):'?'} {d.w}W{d.l}L
+                    </div>
+                  );
+                })}
+                {days.length>5&&<span className="text-xs text-white/30 px-2 py-1">+{days.length-5} วัน</span>}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// ── History Tab ──────────────────────────────────────────────────────────────
+function HistoryTab({allSessions,onOpen,isAdmin}){
+  const [confirmDel,setConfirmDel]=useState(null);
+
+  const deleteSession=async(id)=>{
+    await db.ref(`sessions/${id}`).remove();
+    setConfirmDel(null);
+  };
+
+  if(!allSessions.length) return(
+    <div className="text-center py-16 space-y-3"><div className="text-5xl">📅</div><p className="text-white/40">ยังไม่มีประวัติ</p></div>
+  );
+  return(
+    <div className="space-y-4">
+      <h2 className="font-bold text-xl">📅 ประวัติการแข่งขัน</h2>
+      {allSessions.map(s=>{
+        const {id,config={},players=[],schedule=[],scores={},createdAt,name:sName}=s;
+        const done=schedule.filter(g=>scores[g.id]).length;
+        const pct=schedule.length>0?Math.round(done/schedule.length*100):0;
+        const map={};
+        players.forEach(p=>{map[p.id]={name:p.name,w:0,games:0};});
+        schedule.forEach(game=>{
+          const sc=scores[game.id];if(!sc)return;
+          const hIds=config.gameType==='doubles'?game.home.map(p=>p.id):[game.home.id];
+          const aIds=config.gameType==='doubles'?game.away.map(p=>p.id):[game.away.id];
+          hIds.forEach(pid=>{if(map[pid]){map[pid].games++;if(sc.home>sc.away)map[pid].w++;}});
+          aIds.forEach(pid=>{if(map[pid]){map[pid].games++;if(sc.away>sc.home)map[pid].w++;}});
+        });
+        const winner=Object.values(map).sort((a,b)=>b.w-a.w)[0];
+        return(
+          <div key={id} className="card rounded-2xl p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 cursor-pointer" onClick={()=>onOpen(id)}>
+                <p className="font-bold truncate">{sName||`#${id}`}</p>
+                <p className="text-white/40 text-xs mt-0.5">{config.gameType==='singles'?'1v1':'2v2'} · {config.pointsPerGame} คะแนน/เกม · {createdAt?thaiDateTime(createdAt):''}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${pct===100?'bg-green-400/20 text-green-400':'bg-yellow-400/20 text-yellow-400'}`}>{pct===100?'✓ จบ':`${pct}%`}</span>
+                {isAdmin&&<button onClick={e=>{e.stopPropagation();setConfirmDel(s);}} className="text-red-400 hover:text-red-300 text-lg leading-none">🗑</button>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 cursor-pointer" onClick={()=>onOpen(id)}>
+              {players.map(p=><PlayerChip key={p.id} name={p.name}/>)}
+            </div>
+            <div className="flex items-center justify-between text-xs cursor-pointer" onClick={()=>onOpen(id)}>
+              <span className="text-white/40">{done}/{schedule.length} เกม · #{id}</span>
+              {winner?.games>0&&<span className="text-yellow-400 font-bold">🏆 {winner.name}</span>}
+            </div>
+            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 rounded-full" style={{width:`${pct}%`}}/>
+            </div>
+          </div>
+        );
+      })}
+      {confirmDel&&<ConfirmModal title="ลบการแข่งขัน?" desc={`"${confirmDel.name||confirmDel.id}" จะถูกลบถาวร`} onConfirm={()=>deleteSession(confirmDel.id)} onClose={()=>setConfirmDel(null)}/>}
+    </div>
+  );
+}
+
+// ── Create Tournament (Admin only) ───────────────────────────────────────────
+function CreateTournament({onStart,isAdmin}){
+  const masterPlayers=useMasterPlayers();
+  const [players,setPlayers]=useState([]);
+  const [newName,setNewName]=useState('');
+  const [addNameErr,setAddNameErr]=useState('');
+  const [gameType,setGameType]=useState('doubles');
+  const [pts,setPts]=useState(7);
+  const [avgMin,setAvgMin]=useState(10);
+  const [startTime,setStartTime]=useState('20:00');
+  const [endTime,setEndTime]=useState('22:00');
+  const [tournamentName,setTournamentName]=useState(defaultTournamentName());
+
+  const allPlayerNames=useMemo(()=>{
+    const set=new Set([...PRESET_PLAYERS,...Object.keys(masterPlayers)]);
+    return [...set];
+  },[masterPlayers]);
+
+  const removePlayerFromMaster=async(name)=>db.ref(`masterPlayers/${name}`).remove();
+
+  const togglePlayer=(name)=>{
+    if(players.find(p=>p.name===name)) setPlayers(prev=>prev.filter(p=>p.name!==name));
+    else setPlayers(prev=>[...prev,{id:`p-${name}`,name}]);
+  };
+
+  const addCustom=()=>{
+    const name=newName.trim(); if(!name) return;
+    if(allPlayerNames.includes(name)){togglePlayer(name);setNewName('');return;}
+    db.ref(`masterPlayers/${name}`).set({name,addedAt:Date.now()});
+    setPlayers(prev=>prev.find(p=>p.name===name)?prev:[...prev,{id:`p-${name}`,name}]);
+    setNewName('');
+  };
+
+  const minPl=gameType==='singles'?2:4;
+  const canStart=players.length>=minPl;
+  const totalMin=parseTime(endTime)-parseTime(startTime);
+  const estGames=avgMin>0?Math.floor(totalMin/avgMin):0;
+
+  return(
+    <div className="space-y-4 slide-up">
+      {/* Tournament name */}
+      <div className="card rounded-2xl p-5 space-y-2">
+        <h2 className="font-bold text-lg">🏆 ชื่อการแข่งขัน</h2>
+        <input value={tournamentName} onChange={e=>setTournamentName(e.target.value)}
+          placeholder={defaultTournamentName()} className="input-base"/>
+      </div>
+      {/* Game type */}
+      <div className="card rounded-2xl p-5 space-y-3">
+        <h2 className="font-bold text-lg">🎯 ประเภท</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {[['singles','1v1 เดี่ยว','👤'],['doubles','2v2 คู่','👥']].map(([v,l,ic])=>(
+            <button key={v} onClick={()=>setGameType(v)} className={`p-3 rounded-xl border-2 font-semibold transition-all ${gameType===v?'border-green-400 bg-green-400/20 text-green-300':'border-white/20'}`}>
+              <div className="text-2xl">{ic}</div><div className="text-sm mt-1">{l}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Player selection */}
+      <div className="card rounded-2xl p-5 space-y-4">
+        <h2 className="font-bold text-lg flex items-center justify-between">
+          👥 เลือกผู้เล่น
+          <span className="text-sm font-normal text-white/50">{players.length} คน (ต้องการ ≥{minPl})</span>
+        </h2>
+        <div>
+          <p className="text-xs text-white/40 mb-2">แตะเพื่อเลือก/ยกเลิก</p>
+          <div className="flex flex-wrap gap-2">
+            {allPlayerNames.map(name=>{
+              const sel=!!players.find(p=>p.name===name);
+              return(
+                <div key={name} className="relative group">
+                  <PlayerChip name={name} selected={sel} onClick={()=>togglePlayer(name)}/>
+                  {isAdmin&&!PRESET_PLAYERS.includes(name)&&(
+                    <button onClick={()=>removePlayerFromMaster(name)}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs hidden group-hover:flex items-center justify-center">×</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="border-t border-white/10 pt-3 space-y-2">
+          <p className="text-xs text-white/40">เพิ่มผู้เล่นใหม่</p>
+          <div className="flex gap-2">
+            <input value={newName} onChange={e=>{setNewName(e.target.value);setAddNameErr('');}}
+              onKeyDown={e=>e.key==='Enter'&&addCustom()}
+              placeholder="ชื่อผู้เล่นใหม่..." maxLength={20} className="flex-1 input-base"/>
+            <button onClick={addCustom} className="btn-primary px-4 py-2.5 rounded-xl whitespace-nowrap">+ เพิ่ม</button>
+          </div>
+          {addNameErr&&<p className="text-red-400 text-xs">{addNameErr}</p>}
+        </div>
+        {players.length>0&&(
+          <div className="border-t border-white/10 pt-3">
+            <p className="text-xs text-white/40 mb-2">ผู้เล่นที่เลือก</p>
+            <div className="flex flex-wrap gap-2">
+              {players.map(p=><PlayerChip key={p.id} name={p.name} onRemove={()=>setPlayers(prev=>prev.filter(x=>x.id!==p.id))}/>)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Settings */}
+      <div className="card rounded-2xl p-5 space-y-4">
+        <h2 className="font-bold text-lg">⚙️ ตั้งค่า</h2>
+        <div className="space-y-1.5">
+          <label className="text-sm text-white/60">คะแนนต่อเกม</label>
+          <div className="grid grid-cols-5 gap-1">
+            {[5,7,11,15,21].map(p=>(
+              <button key={p} onClick={()=>setPts(p)} className={`py-2 rounded-lg text-sm font-bold border transition-all ${pts===p?'border-green-400 bg-green-400/20 text-green-300':'border-white/20'}`}>{p}</button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1"><label className="text-xs text-white/60">นาที/เกม</label>
+            <input type="number" value={avgMin} min={5} max={60} onChange={e=>setAvgMin(Number(e.target.value))} className="input-base text-center"/></div>
+          <div className="space-y-1"><label className="text-xs text-white/60">เริ่ม</label>
+            <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className="input-base"/></div>
+          <div className="space-y-1"><label className="text-xs text-white/60">สิ้นสุด</label>
+            <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="input-base"/></div>
+        </div>
+        {canStart&&totalMin>0&&<div className="rounded-xl p-3 text-xs bg-green-400/10 border border-green-400/20 space-y-1.5">
+          <div className="flex justify-between"><span className="text-white/60">เวลาทั้งหมด</span><span className="font-bold">{totalMin} นาที ({totalMin/60} ชม.)</span></div>
+          <div className="flex justify-between"><span className="text-white/60">เกมละ</span><span className="font-bold">{avgMin} นาที</span></div>
+          <div className="flex justify-between border-t border-white/10 pt-1.5">
+            <span className="text-white/60">จำนวนเกม</span>
+            <span className="font-black text-green-400 text-sm">{estGames} เกม</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-white/60">แต่ละคนเล่นประมาณ</span>
+            <span className="font-bold">{players.length>0?(gameType==='doubles'?Math.round(estGames*4/players.length):Math.round(estGames*2/players.length)):'-'} เกม</span>
+          </div>
+        </div>}
+      </div>
+
+      <button disabled={!canStart}
+        onClick={()=>onStart({players,gameType,pointsPerGame:pts,avgMinutes:avgMin,startTime,endTime,tournamentName:tournamentName||defaultTournamentName()})}
+        className={`w-full py-4 rounded-2xl text-lg font-black transition-all ${canStart?'btn-primary shadow-lg':'bg-white/10 text-white/30 cursor-not-allowed'}`}>
+        {canStart?`🚀 สร้าง "${tournamentName||defaultTournamentName()}"`:` ต้องการผู้เล่น ≥${minPl} คน`}
+      </button>
+    </div>
+  );
+}
+
+// ── Join Session ──────────────────────────────────────────────────────────────
+function JoinSession({onJoin}){
+  const [joinId,setJoinId]=useState('');
+  const [joining,setJoining]=useState(false);
+  const handleJoin=async()=>{
+    const id=joinId.trim().toUpperCase(); if(!id) return;
+    setJoining(true);
+    const snap=await db.ref(`sessions/${id}`).get();
+    if(snap.exists()) onJoin(id);
+    else{ alert('ไม่พบ Session ID นี้'); setJoining(false); }
+  };
+  return(
+    <div className="card rounded-2xl p-5 space-y-3 slide-up">
+      <p className="text-white/60 text-sm">กรอก Session ID ที่ผู้จัดส่งมาให้</p>
+      <div className="flex gap-2">
+        <input value={joinId} onChange={e=>setJoinId(e.target.value.toUpperCase())} maxLength={6}
+          placeholder="AB12CD" onKeyDown={e=>e.key==='Enter'&&handleJoin()}
+          className="flex-1 input-base text-center uppercase tracking-widest font-mono text-xl" autoFocus/>
+        <button onClick={handleJoin} disabled={joining||!joinId.trim()}
+          className="px-5 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-400 font-bold disabled:opacity-40">
+          {joining?'...':'เข้าร่วม'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Home Page (no session) ────────────────────────────────────────────────────
+function HomePage({onStart,onJoin,allSessions,isAdmin,onAdminLogin,onAdminLogout}){
+  // Admin: [สร้าง, ประวัติ, สถิติ]   Non-admin: [ประวัติ, สถิติ, เข้าร่วม]
+  const adminTabs   =[['create','➕ สร้างเกม'],['history','📅 ประวัติ'],['stats','📊 สถิติ']];
+  const guestTabs   =[['history','📅 ประวัติ'],['stats','📊 สถิติ'],['join','🔗 เข้าร่วม']];
+  const tabs        = isAdmin ? adminTabs : guestTabs;
+  const [tab,setTab]=useState(tabs[0][0]);
+
+  // Reset tab when admin status changes
+  useEffect(()=>{ setTab(isAdmin?'create':'history'); },[isAdmin]);
+
+  return(
+    <div className="min-h-screen">
+      {/* Top bar */}
+      <div className="sticky top-0 z-40 gradient-bg border-b border-white/10">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🏓</span>
+            <span className="font-black text-lg neon-green tracking-wide">PICKLEBALL</span>
+          </div>
+          {isAdmin
+            ? <button onClick={onAdminLogout} className="flex items-center gap-1.5 text-xs text-yellow-400 border border-yellow-400/30 px-3 py-1.5 rounded-full hover:bg-yellow-400/10 transition-all">
+                <span>👑</span> ออกจาก Admin
+              </button>
+            : <button onClick={onAdminLogin} className="flex items-center gap-1.5 text-xs text-white/40 border border-white/10 px-3 py-1.5 rounded-full hover:text-yellow-400 hover:border-yellow-400/30 transition-all">
+                <span>🔐</span> Admin
+              </button>
+          }
+        </div>
+        <div className="flex border-t border-white/10">
+          {tabs.map(([k,l])=>(
+            <button key={k} onClick={()=>setTab(k)}
+              className={`flex-1 py-2.5 text-sm font-bold transition-all ${tab===k?'tab-active':'text-white/50 hover:text-white'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {isAdmin&&<div className="text-center py-1 bg-yellow-400/10 text-yellow-300 text-xs font-bold">👑 Admin Mode — คุณสามารถสร้างและจัดการการแข่งขันได้</div>}
+      </div>
+
+      <div className="max-w-2xl mx-auto p-4">
+        {tab==='create' && isAdmin && <CreateTournament onStart={onStart} isAdmin={isAdmin}/>}
+        {tab==='history' && <HistoryTab allSessions={allSessions} onOpen={onJoin} isAdmin={isAdmin}/>}
+        {tab==='stats'   && <StatsTab allSessions={allSessions}/>}
+        {tab==='join'    && <JoinSession onJoin={onJoin}/>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ─────────────────────────────────────────────────────────────────
+function App(){
+  const [sessionId,setSessionId]=useState(()=>location.hash.replace('#','')||null);
+  const [tab,setTab]=useState('games');
+  const [isAdmin,setIsAdmin]=useState(()=>isAdminLoggedIn());
+  const [showAdminLogin,setShowAdminLogin]=useState(false);
+  const {session,loading}=useSession(sessionId);
+  const allSessions=useAllSessions();
+
+  useEffect(()=>{ location.hash=sessionId||''; },[sessionId]);
+
+  const handleStart=async(cfg)=>{
+    const id=genId();
+    const maxGames=cfg.avgMinutes>0?Math.floor((parseTime(cfg.endTime)-parseTime(cfg.startTime))/cfg.avgMinutes):12;
+    let raw=[];
+    if(cfg.gameType==='singles') raw=buildSinglesSchedule(cfg.players,maxGames);
+    else raw=buildDoublesSchedule(cfg.players,maxGames);
+    const games=raw.map((m,i)=>({id:`g-${i+1}`,gameNum:i+1,home:m.home,away:m.away}));
+    await db.ref(`sessions/${id}`).set({
+      name:cfg.tournamentName,config:cfg,players:cfg.players,
+      schedule:games,scores:{},createdAt:Date.now()
+    });
+    const updates={};
+    cfg.players.forEach(p=>{ updates[`masterPlayers/${p.name}`]={name:p.name,addedAt:Date.now()}; });
+    await db.ref().update(updates);
+    setSessionId(id);
+  };
+
+  const handleJoin=(id)=>{ setSessionId(id); };
+  const handleReset=()=>{ setSessionId(null); location.hash=''; };
+  const handleAdminLogin=()=>{ setShowAdminLogin(true); };
+  const handleAdminLogout=()=>{ setAdminLogin(false); setIsAdmin(false); };
+
+  if(loading&&sessionId) return(
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center space-y-3"><div className="text-5xl">🏓</div><p className="text-white/60">กำลังโหลด...</p></div>
+    </div>
+  );
+
+  if(!sessionId||!session) return(
+    <>
+      <HomePage onStart={handleStart} onJoin={handleJoin} allSessions={allSessions}
+        isAdmin={isAdmin} onAdminLogin={handleAdminLogin} onAdminLogout={handleAdminLogout}/>
+      {showAdminLogin&&<AdminLoginModal onSuccess={()=>{setIsAdmin(true);setShowAdminLogin(false);}} onClose={()=>setShowAdminLogin(false)}/>}
+    </>
+  );
+
+  return(
+    <div className="min-h-screen">
+      <div className="sticky top-0 z-40 gradient-bg border-b border-white/10">
+        <div className="max-w-2xl mx-auto flex items-stretch">
+          {[['games','🏓 เกม'],['results','🏆 ผล'],['stats','📊 สถิติ']].map(([k,l])=>(
+            <button key={k} onClick={()=>setTab(k)}
+              className={`flex-1 py-3 text-sm font-bold transition-all ${tab===k?'tab-active':'text-white/50 hover:text-white'}`}>{l}</button>
+          ))}
+          <button onClick={handleReset} className="px-3 py-3 text-white/30 hover:text-white text-sm transition-all">← กลับ</button>
+        </div>
+        {isAdmin&&<div className="text-center py-1 bg-yellow-400/10 text-yellow-300 text-xs font-bold">👑 Admin Mode</div>}
+      </div>
+      <div className="max-w-2xl mx-auto p-4">
+        {tab==='games'  &&<GamesTab   session={session} sessionId={sessionId} isAdmin={isAdmin}/>}
+        {tab==='results'&&<ResultsTab session={session} sessionId={sessionId} isAdmin={isAdmin} onReset={handleReset}/>}
+        {tab==='stats'  &&<StatsTab   allSessions={allSessions}/>}
+      </div>
+      {showAdminLogin&&<AdminLoginModal onSuccess={()=>{setIsAdmin(true);setShowAdminLogin(false);}} onClose={()=>setShowAdminLogin(false)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
