@@ -102,50 +102,98 @@ function buildSinglesSchedule(players, maxGames) {
   return allGames;
 }
 
-// Doubles: สร้างทุก match ที่เป็นไปได้ แล้วเลือกให้ทุกคนเล่นเท่ากันจนเต็มเวลา
+// ── Fixed template สำหรับ 6 คน (doubles) ────────────────────────────────────
+// index อ้างอิงจาก PRESET_PLAYERS order: 0=แชมป์ 1=หนวด 2=ซิง 3=เอก 4=ซัน 5=ซ่า
+const FIXED_6P = [
+  { home:[0,3], away:[1,2] }, // แชมป์+เอก  vs หนวด+ซิง  | พัก: ซัน,ซ่า
+  { home:[2,4], away:[5,0] }, // ซิง+ซัน    vs ซ่า+แชมป์ | พัก: เอก,หนวด
+  { home:[3,1], away:[4,5] }, // เอก+หนวด   vs ซัน+ซ่า   | พัก: แชมป์,ซิง
+  { home:[0,2], away:[1,5] }, // แชมป์+ซิง  vs หนวด+ซ่า  | พัก: เอก,ซัน
+  { home:[3,4], away:[2,5] }, // เอก+ซัน    vs ซิง+ซ่า   | พัก: แชมป์,หนวด
+  { home:[0,1], away:[3,5] }, // แชมป์+หนวด vs เอก+ซ่า   | พัก: ซิง,ซัน
+  { home:[4,5], away:[0,2] }, // ซัน+ซ่า    vs แชมป์+ซิง | พัก: หนวด,เอก
+  { home:[1,2], away:[3,4] }, // หนวด+ซิง   vs เอก+ซัน   | พัก: แชมป์,ซ่า
+  { home:[0,3], away:[1,4] }, // แชมป์+เอก  vs หนวด+ซัน  | พัก: ซิง,ซ่า
+  { home:[2,5], away:[0,4] }, // ซิง+ซ่า    vs แชมป์+ซัน | พัก: เอก,หนวด
+  { home:[3,5], away:[1,2] }, // เอก+ซ่า    vs หนวด+ซิง  | พัก: แชมป์,ซัน
+  { home:[0,4], away:[3,2] }, // แชมป์+ซัน  vs เอก+ซิง   | พัก: หนวด,ซ่า
+];
+
 function buildDoublesSchedule(players, maxGames) {
-  const n=players.length;
-  if(n<4) return [];
+  const n = players.length;
+  if (n < 4) return [];
 
-  // สร้าง match ทั้งหมดที่เป็นไปได้ (เลือก 4 คน แล้วแบ่ง 3 วิธี)
-  const allMatches=[];
-  for(let a=0;a<n;a++) for(let b=a+1;b<n;b++) for(let c=b+1;c<n;c++) for(let d=c+1;d<n;d++){
-    const four=[players[a],players[b],players[c],players[d]];
-    allMatches.push({home:[four[0],four[1]],away:[four[2],four[3]]});
-    allMatches.push({home:[four[0],four[2]],away:[four[1],four[3]]});
-    allMatches.push({home:[four[0],four[3]],away:[four[1],four[2]]});
+  // ── 6 คน: ใช้ fixed template เสมอ ──────────────────────────────────────────
+  if (n === 6) {
+    // Sort ตาม PRESET_PLAYERS order เพื่อให้ index 0=แชมป์, 1=หนวด, ...
+    const sorted = [...players].sort((a, b) => {
+      const ai = PRESET_PLAYERS.indexOf(a.name);
+      const bi = PRESET_PLAYERS.indexOf(b.name);
+      return (ai === -1 ? 999 + a.name.localeCompare(b.name) : ai) -
+             (bi === -1 ? 999 + b.name.localeCompare(a.name) : bi);
+    });
+
+    const games = [];
+    for (let g = 0; g < maxGames; g++) {
+      const t = FIXED_6P[g % FIXED_6P.length];
+      const home = t.home.map(i => sorted[i]);
+      const away = t.away.map(i => sorted[i]);
+      const activeIds = new Set([...home, ...away].map(p => p.id));
+      const rest = sorted.filter(p => !activeIds.has(p.id));
+      games.push({ home, away, rest });
+    }
+    return games;
   }
 
-  // Greedy: เลือก match ที่ทำให้ play count สม่ำเสมอที่สุด
-  const playCounts={};
-  players.forEach(p=>playCounts[p.id]=0);
-  const selected=[];
-  const pool=shuffle(allMatches);
+  // ── จำนวนอื่น: algorithm fair rotation ──────────────────────────────────────
+  const allRestPairs = [];
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      allRestPairs.push([players[i], players[j]]);
 
-  while(selected.length<maxGames){
-    // หา match ที่ทำให้ผลรวม play count น้อยที่สุด (คนที่เล่นน้อยได้เล่นก่อน)
-    let bestIdx=-1, bestScore=Infinity;
-    for(let i=0;i<pool.length;i++){
-      const m=pool[i];
-      const involved=[...m.home,...m.away];
-      const score=involved.reduce((s,p)=>s+playCounts[p.id],0);
-      // คนที่เล่นน้อยต้องได้ก่อน
-      const maxInvolved=Math.max(...involved.map(p=>playCounts[p.id]));
-      const minAll=Math.min(...Object.values(playCounts));
-      if(maxInvolved<=minAll+2 && score<bestScore){bestScore=score;bestIdx=i;}
-    }
-    if(bestIdx===-1){
-      // ไม่มีตัวเลือกที่ fair แล้ว — เลือก match แรกสุดในกอง
-      if(pool.length===0) break;
-      bestIdx=0;
-    }
-    const [picked]=pool.splice(bestIdx,1);
-    selected.push(picked);
-    [...picked.home,...picked.away].forEach(p=>playCounts[p.id]++);
-    // วน pool ถ้าหมด
-    if(pool.length===0) pool.push(...shuffle(allMatches));
+  const restCounts = {};
+  players.forEach(p => (restCounts[p.id] = 0));
+  let lastRestedIds = new Set();
+  const restSequence = [];
+  let pool = shuffle([...allRestPairs]);
+
+  for (let g = 0; g < maxGames; g++) {
+    if (pool.length === 0) pool = shuffle([...allRestPairs]);
+    let cands = pool.filter(pair => !pair.some(p => lastRestedIds.has(p.id)));
+    if (cands.length === 0) cands = [...pool];
+    cands.sort((a, b) =>
+      (restCounts[a[0].id] + restCounts[a[1].id]) -
+      (restCounts[b[0].id] + restCounts[b[1].id])
+    );
+    const picked = cands[0];
+    const idx = pool.findIndex(p => p[0].id === picked[0].id && p[1].id === picked[1].id);
+    if (idx !== -1) pool.splice(idx, 1);
+    restSequence.push(picked);
+    lastRestedIds = new Set(picked.map(p => p.id));
+    picked.forEach(p => restCounts[p.id]++);
   }
-  return selected;
+
+  const partnerCount = {};
+  players.forEach(p => { partnerCount[p.id] = {}; players.forEach(q => { if (p.id !== q.id) partnerCount[p.id][q.id] = 0; }); });
+
+  return restSequence.map(rest => {
+    const restIds = new Set(rest.map(p => p.id));
+    const active = players.filter(p => !restIds.has(p.id));
+    const splits = [
+      { home: [active[0],active[1]], away: [active[2],active[3]] },
+      { home: [active[0],active[2]], away: [active[1],active[3]] },
+      { home: [active[0],active[3]], away: [active[1],active[2]] },
+    ];
+    splits.sort((a,b) =>
+      (partnerCount[a.home[0].id][a.home[1].id] + partnerCount[a.away[0].id][a.away[1].id]) -
+      (partnerCount[b.home[0].id][b.home[1].id] + partnerCount[b.away[0].id][b.away[1].id])
+    );
+    const chosen = splits[0];
+    [[chosen.home[0],chosen.home[1]],[chosen.away[0],chosen.away[1]]].forEach(([a,b])=>{
+      partnerCount[a.id][b.id]++; partnerCount[b.id][a.id]++;
+    });
+    return { ...chosen, rest };
+  });
 }
 
 // ── Admin session (sessionStorage) ──────────────────────────────────────────
@@ -311,53 +359,140 @@ function ConfirmModal({title,desc,onConfirm,onClose,danger=true}){
 // ── Games Tab ────────────────────────────────────────────────────────────────
 function GamesTab({session,sessionId,isAdmin}){
   const [modal,setModal]=useState(null);
+  const [viewMode,setViewMode]=useState('table'); // 'table' | 'card'
   const {config,schedule=[],scores={},name:sessionName}=session;
   const {gameType,pointsPerGame,avgMinutes,startTime}=config;
-  const lbl=t=>gameType==='doubles'?t.map(p=>p.name).join(' & '):t.name;
+  const teamLbl=t=>Array.isArray(t)?t.map(p=>p.name).join(' + '):t.name;
   const done=schedule.filter(g=>scores[g.id]).length;
+  const pct=schedule.length>0?Math.round(done/schedule.length*100):0;
 
   const saveScore=(gameId,h,a)=>db.ref(`sessions/${sessionId}/scores/${gameId}`).set({home:h,away:a});
   const clearScore=(gameId)=>db.ref(`sessions/${sessionId}/scores/${gameId}`).remove();
 
+  const timeRange=(idx)=>{
+    const s=parseTime(startTime)+idx*avgMinutes;
+    return `${formatTime(s)} - ${formatTime(s+avgMinutes)}`;
+  };
+
   return(
-    <div className="space-y-4">
+    <div className="space-y-3">
       <ShareBanner sessionId={sessionId} isAdmin={isAdmin} sessionName={sessionName}/>
+
+      {/* Progress */}
       <div className="flex items-center gap-3">
-        <div><h2 className="font-bold text-xl">🏓 ตารางแข่งขัน</h2><p className="text-white/50 text-xs">{done}/{schedule.length} เกมเสร็จสิ้น</p></div>
-        <div className="ml-auto text-2xl font-black neon-green">{Math.round(done/schedule.length*100)||0}%</div>
+        <div><h2 className="font-bold text-lg">🏓 ตารางแข่งขัน</h2><p className="text-white/50 text-xs">{done}/{schedule.length} เกมเสร็จ</p></div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xl font-black neon-green">{pct}%</span>
+          <div className="flex rounded-lg overflow-hidden border border-white/10 text-xs">
+            {[['table','📋'],['card','🃏']].map(([m,ic])=>(
+              <button key={m} onClick={()=>setViewMode(m)}
+                className={`px-2.5 py-1.5 font-bold transition-all ${viewMode===m?'bg-white/20 text-white':'text-white/40 hover:text-white'}`}>{ic}</button>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-500 rounded-full" style={{width:`${done/schedule.length*100}%`}}/>
+        <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-500 rounded-full" style={{width:`${pct}%`}}/>
       </div>
-      <div className="space-y-3">
-        {schedule.map((game,idx)=>{
-          const sc=scores[game.id];const isDone=!!sc;
-          const winner=isDone?(sc.home>sc.away?'home':sc.away>sc.home?'away':'draw'):null;
-          return(
-            <div key={game.id} onClick={()=>isAdmin&&setModal({...game,homeScore:sc?.home,awayScore:sc?.away})}
-              className={`card rounded-2xl p-4 transition-all ${isAdmin?'cursor-pointer hover:-translate-y-0.5':''} ${isDone?'completed-game':'pending-game'}`}>
-              <div className="flex items-center justify-between mb-2 text-xs text-white/40">
-                <span className="font-mono">เกมที่ {game.gameNum}</span>
-                <span className="font-mono">{formatTime(parseTime(startTime)+idx*avgMinutes)}</span>
-                {isDone?<span className="bg-green-400/20 text-green-400 px-2 py-0.5 rounded-full">✓ เสร็จ</span>
-                  :<span className="bg-white/10 text-white/50 px-2 py-0.5 rounded-full">⏳ รอ</span>}
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`flex-1 text-center ${isDone&&winner==='home'?'text-green-400 font-black':''}`}>
-                  <p className="text-sm font-semibold truncate">{lbl(game.home)}</p>
-                  {isDone&&<p className="text-2xl font-black">{sc.home}</p>}
+
+      {/* TABLE VIEW */}
+      {viewMode==='table'&&(
+        <div className="card rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10 text-xs text-white/40">
+                  <th className="px-3 py-2.5 text-center font-semibold w-10">#</th>
+                  <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">เวลา</th>
+                  <th className="px-3 py-2.5 text-center font-semibold">ฝั่ง A</th>
+                  <th className="px-2 py-2.5 text-center font-semibold w-8">VS</th>
+                  <th className="px-3 py-2.5 text-center font-semibold">ฝั่ง B</th>
+                  {gameType==='doubles'&&<th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">พัก</th>}
+                  <th className="px-3 py-2.5 text-center font-semibold w-16">คะแนน</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {schedule.map((game,idx)=>{
+                  const sc=scores[game.id]; const isDone=!!sc;
+                  const winner=isDone?(sc.home>sc.away?'home':sc.away>sc.home?'away':'draw'):null;
+                  return(
+                    <tr key={game.id}
+                      onClick={()=>isAdmin&&setModal({...game,homeScore:sc?.home,awayScore:sc?.away})}
+                      className={`transition-all ${isAdmin?'cursor-pointer hover:bg-white/5':''} ${isDone?'bg-green-400/3':''}`}>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-black
+                          ${isDone?'bg-green-400/20 text-green-400':'bg-white/10 text-white/50'}`}>
+                          {game.gameNum}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-white/50 text-xs font-mono whitespace-nowrap">{timeRange(idx)}</td>
+                      <td className={`px-3 py-2.5 text-center font-semibold ${isDone&&winner==='home'?'text-green-400':''}`}>
+                        {teamLbl(game.home)}
+                      </td>
+                      <td className="px-2 py-2.5 text-center text-white/30 text-xs font-bold">vs</td>
+                      <td className={`px-3 py-2.5 text-center font-semibold ${isDone&&winner==='away'?'text-green-400':''}`}>
+                        {teamLbl(game.away)}
+                      </td>
+                      {gameType==='doubles'&&(
+                        <td className="px-3 py-2.5 text-center text-white/40 text-xs">
+                          {(game.rest||[]).map(p=>p.name).join(', ')||'-'}
+                        </td>
+                      )}
+                      <td className="px-3 py-2.5 text-center">
+                        {isDone
+                          ? <span className="font-black text-base">
+                              <span className={winner==='home'?'text-green-400':'text-red-400'}>{sc.home}</span>
+                              <span className="text-white/30 mx-0.5">:</span>
+                              <span className={winner==='away'?'text-green-400':'text-red-400'}>{sc.away}</span>
+                            </span>
+                          : <span className="text-white/20 text-xs">{isAdmin?'แตะ':'-'}</span>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CARD VIEW */}
+      {viewMode==='card'&&(
+        <div className="space-y-2.5">
+          {schedule.map((game,idx)=>{
+            const sc=scores[game.id];const isDone=!!sc;
+            const winner=isDone?(sc.home>sc.away?'home':sc.away>sc.home?'away':'draw'):null;
+            return(
+              <div key={game.id} onClick={()=>isAdmin&&setModal({...game,homeScore:sc?.home,awayScore:sc?.away})}
+                className={`card rounded-2xl p-4 transition-all ${isAdmin?'cursor-pointer hover:-translate-y-0.5':''} ${isDone?'completed-game':'pending-game'}`}>
+                <div className="flex items-center justify-between mb-2 text-xs text-white/40">
+                  <span className="font-mono">เกมที่ {game.gameNum} · {timeRange(idx)}</span>
+                  {isDone?<span className="bg-green-400/20 text-green-400 px-2 py-0.5 rounded-full">✓ เสร็จ</span>
+                    :<span className="bg-white/10 text-white/50 px-2 py-0.5 rounded-full">⏳ รอ</span>}
                 </div>
-                <div className="text-lg font-black text-white/30">VS</div>
-                <div className={`flex-1 text-center ${isDone&&winner==='away'?'text-green-400 font-black':''}`}>
-                  <p className="text-sm font-semibold truncate">{lbl(game.away)}</p>
-                  {isDone&&<p className="text-2xl font-black">{sc.away}</p>}
+                <div className="flex items-center gap-2">
+                  <div className={`flex-1 text-center ${isDone&&winner==='home'?'text-green-400 font-black':''}`}>
+                    <p className="text-sm font-semibold">{teamLbl(game.home)}</p>
+                    {isDone&&<p className="text-2xl font-black">{sc.home}</p>}
+                  </div>
+                  <div className="text-base font-black text-white/30">VS</div>
+                  <div className={`flex-1 text-center ${isDone&&winner==='away'?'text-green-400 font-black':''}`}>
+                    <p className="text-sm font-semibold">{teamLbl(game.away)}</p>
+                    {isDone&&<p className="text-2xl font-black">{sc.away}</p>}
+                  </div>
                 </div>
+                {gameType==='doubles'&&(game.rest||[]).length>0&&(
+                  <p className="text-center text-white/30 text-xs mt-2">
+                    💤 พัก: {game.rest.map(p=>p.name).join(', ')}
+                  </p>
+                )}
               </div>
-              {!isDone&&(isAdmin?<p className="text-center text-white/30 text-xs mt-2">แตะเพื่อบันทึกคะแนน</p>:<p className="text-center text-white/30 text-xs mt-2">รอผู้จัดบันทึก</p>)}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
       {modal&&<ScoreModal game={modal} pointsPerGame={pointsPerGame} gameType={gameType}
         onClose={()=>setModal(null)}
         onSave={(h,a)=>{saveScore(modal.id,h,a);setModal(null);}}
@@ -972,7 +1107,7 @@ function App(){
     let raw=[];
     if(cfg.gameType==='singles') raw=buildSinglesSchedule(cfg.players,maxGames);
     else raw=buildDoublesSchedule(cfg.players,maxGames);
-    const games=raw.map((m,i)=>({id:`g-${i+1}`,gameNum:i+1,home:m.home,away:m.away}));
+    const games=raw.map((m,i)=>({id:`g-${i+1}`,gameNum:i+1,home:m.home,away:m.away,rest:m.rest||[]}));
     await db.ref(`sessions/${id}`).set({
       name:cfg.tournamentName,config:cfg,players:cfg.players,
       schedule:games,scores:{},createdAt:Date.now()
