@@ -146,37 +146,29 @@ function buildDoublesSchedule(players, maxGames) {
   }
 
   // ── จำนวนอื่น: algorithm fair rotation ──────────────────────────────────────
-  const allRestPairs = [];
-  for (let i = 0; i < n; i++)
-    for (let j = i + 1; j < n; j++)
-      allRestPairs.push([players[i], players[j]]);
-
+  // สำหรับ n คน แต่ละเกมพัก n-4 คน เพื่อให้เล่นเท่าๆ กัน
+  const restSize = n - 4;
   const restCounts = {};
   players.forEach(p => (restCounts[p.id] = 0));
   let lastRestedIds = new Set();
-  const restSequence = [];
-  let pool = shuffle([...allRestPairs]);
+  const restGroups = [];
 
   for (let g = 0; g < maxGames; g++) {
-    if (pool.length === 0) pool = shuffle([...allRestPairs]);
-    let cands = pool.filter(pair => !pair.some(p => lastRestedIds.has(p.id)));
-    if (cands.length === 0) cands = [...pool];
-    cands.sort((a, b) =>
-      (restCounts[a[0].id] + restCounts[a[1].id]) -
-      (restCounts[b[0].id] + restCounts[b[1].id])
-    );
-    const picked = cands[0];
-    const idx = pool.findIndex(p => p[0].id === picked[0].id && p[1].id === picked[1].id);
-    if (idx !== -1) pool.splice(idx, 1);
-    restSequence.push(picked);
-    lastRestedIds = new Set(picked.map(p => p.id));
-    picked.forEach(p => restCounts[p.id]++);
+    // เลือกคนพัก: ให้คนที่พักน้อยที่สุดได้พักบ้าง (กระจาย playtime)
+    // และห้ามพักซ้ำ 2 เกมติดกัน
+    const eligible = players.filter(p => !lastRestedIds.has(p.id));
+    let pool = eligible.length >= restSize ? eligible : [...players];
+    pool = [...pool].sort((a, b) => restCounts[a.id] - restCounts[b.id]);
+    const toRest = pool.slice(0, restSize);
+    restGroups.push(toRest);
+    lastRestedIds = new Set(toRest.map(p => p.id));
+    toRest.forEach(p => restCounts[p.id]++);
   }
 
   const partnerCount = {};
   players.forEach(p => { partnerCount[p.id] = {}; players.forEach(q => { if (p.id !== q.id) partnerCount[p.id][q.id] = 0; }); });
 
-  return restSequence.map(rest => {
+  return restGroups.map(rest => {
     const restIds = new Set(rest.map(p => p.id));
     const active = players.filter(p => !restIds.has(p.id));
     const splits = [
@@ -394,6 +386,44 @@ function GamesTab({session,sessionId,isAdmin}){
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
         <div className="h-full bg-gradient-to-r from-green-400 to-teal-400 transition-all duration-500 rounded-full" style={{width:`${pct}%`}}/>
       </div>
+
+      {/* Player game count summary */}
+      {(()=>{
+        if(!schedule.length||gameType!=='doubles') return null;
+        const allPlayers=Array.isArray(session.players)?session.players:Object.values(session.players||{});
+        if(!allPlayers.length) return null;
+        const playCounts={};
+        allPlayers.forEach(p=>{playCounts[p.id]=0;});
+        schedule.forEach(g=>{
+          [...(g.home||[]),...(g.away||[])].forEach(p=>{if(p&&playCounts[p.id]!==undefined)playCounts[p.id]++;});
+        });
+        const vals=allPlayers.map(p=>playCounts[p.id]||0);
+        const max=Math.max(...vals); const min=Math.min(...vals);
+        const isBalanced=max-min<=1;
+        return(
+          <div className="card rounded-2xl p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold text-white/60">สรุปจำนวนเกมที่เล่น</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${isBalanced?'bg-green-400/20 text-green-400':'bg-yellow-400/20 text-yellow-400'}`}>
+                {isBalanced?'✓ สมดุล':'⚠ ไม่สมดุล'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+              {allPlayers.map(p=>{
+                const play=playCounts[p.id]||0;
+                const isMax=play===max;
+                return(
+                  <div key={p.id} className={`rounded-xl p-2 text-center ${isMax?'bg-green-400/10 border border-green-400/30':'bg-white/5'}`}>
+                    <div className="text-xs font-bold text-white/80 truncate">{p.name}</div>
+                    <div className={`text-lg font-black ${isMax?'text-green-400':'text-white'}`}>{play}</div>
+                    <div className="text-white/30 text-xs">เกม</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TABLE VIEW */}
       {viewMode==='table'&&(
